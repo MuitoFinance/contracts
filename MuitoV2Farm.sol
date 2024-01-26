@@ -32,6 +32,7 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
         IERC20 assets;
         uint256 allocPoint;
         uint256 amount;
+        uint256 performanceFee;
         uint256 withdrawFee;
         uint256 lastRewardTime;
         uint256 acctPerShare;
@@ -220,6 +221,7 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
     /// @param _allocPoints The allocation points
     /// @param _token The pool asset
     /// @param _withUpdate The updated pool flag
+    /// @param _performanceFee The performance fee
     /// @param _withdrawFee The withdrawal fee
     /// @param _vault The vault address
     /// @param isNativeToken Pool asset native token identifier
@@ -227,6 +229,7 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
         uint256 _allocPoints,
         IERC20 _token,
         bool _withUpdate,
+        uint256 _performanceFee,
         uint256 _withdrawFee,
         address _vault,
         bool isNativeToken
@@ -252,6 +255,7 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
             assets: _token,
             allocPoint: _allocPoints,
             amount: 0,
+            performanceFee: _performanceFee,
             withdrawFee: _withdrawFee,
             lastRewardTime: lastRewardTime,
             acctPerShare: 0,
@@ -263,12 +267,14 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
     /// @param _pid The pool id
     /// @param _allocPoints The allocation points
     /// @param _withUpdate The updated pool flag
+    /// @param _performanceFee The performance fee
     /// @param _withdrawFee The withdrawal fee
     /// @param _vault The vault address
     function setPool(
         uint256 _pid,
         uint256 _allocPoints,
         bool _withUpdate,
+        uint256 _performanceFee,
         uint256 _withdrawFee,
         IVault _vault
     ) external onlyOwner {
@@ -281,6 +287,7 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
         totalAllocPoint = totalAllocPoint.sub(poolInfoList[_pid].allocPoint).add(_allocPoints);
 
         poolInfoList[_pid].allocPoint = _allocPoints;
+        poolInfoList[_pid].performanceFee = _performanceFee;
         poolInfoList[_pid].withdrawFee = _withdrawFee;
         poolInfoList[_pid].vault = _vault;
     }
@@ -346,10 +353,10 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
         }
 
         uint256 _rewards = user.amount.mul(acctPerShare).div(1e18).sub(user.rewardDebt);
-        if (pool.withdrawFee == 0) {
+        if (pool.performanceFee == 0) {
             return _rewards;
         } else {
-            uint256 _fee = _rewards.mul(pool.withdrawFee).div(1000);
+            uint256 _fee = _rewards.mul(pool.performanceFee).div(1000);
             return _rewards.sub(_fee);
         }
     }
@@ -444,7 +451,7 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
         }
         user.rewardDebt = user.amount.mul(pool.acctPerShare).div(1e18);
 
-        pool.vault.withdraw(msg.sender, _amount);
+        pool.vault.withdraw(msg.sender, _amount, pool.withdrawFee);
 
         emit Withdraw(msg.sender, _pid, _amount);
     }

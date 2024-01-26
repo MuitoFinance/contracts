@@ -9,7 +9,6 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../interface/IStrategy.sol";
 import "../comm/TransferHelper.sol";
 import {IVault} from "../interface/IVault.sol";
-
 /***
 * @notice - This is the vault contract for the mainChef
 **/
@@ -120,7 +119,7 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     /// @notice Deposit assets to the vault
     /// @param _userAddr User address
     /// @param _amount Deposit amount
-    function deposit(address _userAddr, uint _amount) public payable nonReentrant returns (uint256){
+    function deposit(address _userAddr, uint256 _amount) public payable nonReentrant returns (uint256){
         require(msg.sender == mainChef, "!mainChef");
         require(_userAddr != address(0), "user address cannot be zero address");
 
@@ -141,7 +140,7 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     }
 
     /// @dev Process ETH deposit
-    function _depositETH(address _userAddr, uint _amount) private returns (uint256){
+    function _depositETH(address _userAddr, uint256 _amount) private returns (uint256){
         UserInfo storage _userInfo = userInfoMap[_userAddr];
 
         _userInfo.amount = _userInfo.amount.add(_amount);
@@ -156,7 +155,7 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     }
 
     /// @dev Process ERC20 deposit
-    function _deposit(address _userAddr, address _mainChef, uint _amount) private returns (uint256){
+    function _deposit(address _userAddr, address _mainChef, uint256 _amount) private returns (uint256){
         UserInfo storage _userInfo = userInfoMap[_userAddr];
 
         uint256 _poolBalance = balance();
@@ -179,7 +178,8 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     /// @notice Withdraw assets from the vault
     /// @param _userAddr User Address
     /// @param _amount Withdrawal Amount
-    function withdraw(address _userAddr, uint _amount) public nonReentrant returns (uint256){
+    /// @param _withdrawFee Withdrawal fee
+    function withdraw(address _userAddr, uint256 _amount, uint256 _withdrawFee) public nonReentrant returns (uint256){
         require(msg.sender == mainChef, "!mainChef");
         require(_userAddr != address(0), "User address cannot be zero address");
 
@@ -188,6 +188,11 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
 
         _userInfo.amount = _userInfo.amount.sub(_amount);
         totalAssets = totalAssets.sub(_amount);
+
+        if (_withdrawFee != 0) {
+            uint256 _fee = _amount.mul(_withdrawFee).div(1000);
+            _amount = _amount.sub(_fee);
+        }
 
         if (address(assets) == WETH) {
             // withdraw from strategy if has
@@ -210,8 +215,6 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
             emit Withdraw(_userAddr, _amount);
             return _amount;
         }
-
-
     }
 
     receive() external payable {}
