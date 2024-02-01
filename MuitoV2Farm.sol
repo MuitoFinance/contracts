@@ -116,7 +116,11 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
     /// @notice Set the token per block
     /// @param _tokenPerBlock Token yield per block
     function setTokenPerBlock(uint256 _tokenPerBlock) public onlyOwner {
-        tokenPerBlock = _tokenPerBlock;
+        if (block.timestamp > bonusEndTime) {
+            tokenPerBlock = tokenPerBlock.div(BONUS_MULTIPLIER);
+        }else{
+            tokenPerBlock = _tokenPerBlock;
+        }
     }
 
     /// @notice Set the farm start timestamp
@@ -316,10 +320,6 @@ contract MuitoV2Farm is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrad
 
         if (block.timestamp <= pool.lastRewardTime) {
             return;
-        }
-
-        if (block.timestamp > bonusEndTime) {
-            tokenPerBlock = tokenPerBlock.div(BONUS_MULTIPLIER);
         }
 
         uint256 totalAmount = pool.amount;
