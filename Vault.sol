@@ -8,7 +8,8 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../interface/IStrategy.sol";
 import "../comm/TransferHelper.sol";
-import {IVault} from "../interface/IVault.sol";
+import "../interface/IVault.sol";
+
 /***
 * @notice - This is the vault contract for the mainChef
 **/
@@ -42,6 +43,9 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     // User list
     address[] public userList;
 
+    // Total withdrawal fee
+    uint256 public totalWithdrawFee;
+
     /// @notice Emitted when user deposit assets
     /// @param user Address that deposited
     /// @param amount Deposit amount from user
@@ -73,6 +77,12 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     /// @param _strategy Strategy address
     function setStrategy(IStrategy _strategy) external onlyOwner {
         strategy = _strategy;
+
+        if (address(_strategy) != address(0)) {
+            transferETHToStrategy();
+            transferERC20ToStrategy();
+        }
+
     }
 
     /// @notice Set the mainChef
@@ -101,7 +111,11 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     /// @notice Return pool balance
     function balance() public view returns (uint256) {
         if (address(assets) == WETH) {
-            return address(this).balance;
+            if (address(strategy) != address(0)) {
+                return address(this).balance.add(IStrategy(strategy).balanceOf());
+            } else {
+                return address(this).balance;
+            }
         } else {
             if (address(strategy) != address(0)) {
                 return assets.balanceOf(address(this)).add(IStrategy(strategy).balanceOf());
@@ -134,6 +148,7 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
             _depositAmount = _deposit(_userAddr, mainChef, _amount);
         }
 
+        userList.push(_userAddr);
         emit Deposit(_userAddr, _depositAmount);
 
         return _depositAmount;
@@ -169,7 +184,8 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
 
         // deposit to strategy if has
         if (address(strategy) != address(0)) {
-            IStrategy(strategy).deposit(_mainChef, _amount);
+            IERC20(assets).safeIncreaseAllowance(address(strategy), type(uint256).max);
+            IStrategy(strategy).deposit(address(this), _amount);
         }
 
         return _depositAmount;
@@ -191,6 +207,7 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
 
         if (_withdrawFee != 0) {
             uint256 _fee = _amount.mul(_withdrawFee).div(1000);
+            totalWithdrawFee = totalWithdrawFee.add(_fee);
             _amount = _amount.sub(_fee);
         }
 
@@ -214,6 +231,28 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
 
             emit Withdraw(_userAddr, _amount);
             return _amount;
+        }
+    }
+
+    /// @notice Collect the withdraw fee by team
+    /// @param _admin Team address
+    function collectWithdrawFee(address _admin) external onlyOwner {
+        TransferHelper.safeTransferMNT(_admin, totalWithdrawFee);
+        totalWithdrawFee = 0;
+    }
+
+    // @dev Transfer ETH to strategy
+    function transferETHToStrategy() internal {
+        if (address(this).balance > 0) {
+            TransferHelper.safeTransferMNT(address(strategy), address(this).balance);
+        }
+    }
+
+    /// @dev Transfer ERC20 to strategy
+    function transferERC20ToStrategy() internal {
+        uint256 tokenBal = assets.balanceOf(address(this));
+        if (tokenBal > 0) {
+            assets.safeTransfer(address(strategy), tokenBal);
         }
     }
 
