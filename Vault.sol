@@ -9,7 +9,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../interface/IStrategy.sol";
 import "../comm/TransferHelper.sol";
 import "../interface/IVault.sol";
-
+import "hardhat/console.sol";
 /***
 * @notice - This is the vault contract for the mainChef
 **/
@@ -46,6 +46,8 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     // Total withdrawal fee
     uint256 public totalWithdrawFee;
 
+    address public teamAddress;
+
     /// @notice Emitted when user deposit assets
     /// @param user Address that deposited
     /// @param amount Deposit amount from user
@@ -63,7 +65,8 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     function initialize(
         IERC20 _assets,
         address _weth,
-        address _mainChef
+        address _mainChef,
+        address _addr
     ) public initializer {
         __Ownable_init();
         __ReentrancyGuard_init();
@@ -71,6 +74,7 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
         assets = _assets;
         WETH = _weth;
         mainChef = _mainChef;
+        teamAddress = _addr;
     }
 
     /// @notice Set strategy
@@ -101,6 +105,13 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
     /// @param _assets The assets of the vault
     function setAssets(IERC20 _assets) external onlyOwner {
         assets = _assets;
+    }
+
+    /// @notice Set the team address
+    /// @param _addr The team address
+    function setTeamAddress(address _addr) external onlyOwner {
+        require(_addr != address(0), "team address cannot be zero");
+        teamAddress = _addr;
     }
 
     /// @notice Return vault pool balance only (strategy balance not included)
@@ -205,8 +216,10 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
         _userInfo.amount = _userInfo.amount.sub(_amount);
         totalAssets = totalAssets.sub(_amount);
 
+        uint256 _fee = 0;
         if (_withdrawFee != 0) {
-            uint256 _fee = _amount.mul(_withdrawFee).div(1000);
+            require(teamAddress != address(0), "team address cannot be zero");
+            _fee = _amount.mul(_withdrawFee).div(1000);
             totalWithdrawFee = totalWithdrawFee.add(_fee);
             _amount = _amount.sub(_fee);
         }
@@ -215,8 +228,17 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
             // withdraw from strategy if has
             if (address(strategy) != address(0)) {
                 IStrategy(strategy).withdrawNative(_userAddr, _amount);
+
+                // Transfer the withdrawal fee to team
+                if (_fee > 0) {
+                    IStrategy(strategy).withdrawNative(teamAddress, _fee);
+                }
             } else {
                 TransferHelper.safeTransferMNT(_userAddr, _amount);
+
+                if (_fee > 0) {
+                    TransferHelper.safeTransferMNT(teamAddress, _fee);
+                }
             }
 
             emit Withdraw(_userAddr, _amount);
@@ -225,20 +247,22 @@ contract Vault is IVault, Initializable, OwnableUpgradeable, ReentrancyGuardUpgr
             // withdraw from strategy if has
             if (address(strategy) != address(0)) {
                 IStrategy(strategy).withdraw(_userAddr, _amount);
+
+                // Transfer the withdrawal fee to team
+                if (_fee > 0) {
+                    IStrategy(strategy).withdraw(teamAddress, _fee);
+                }
             } else {
                 TransferHelper.safeTransfer(address(assets), _userAddr, _amount);
+
+                if (_fee > 0) {
+                    TransferHelper.safeTransfer(address(assets), teamAddress, _fee);
+                }
             }
 
             emit Withdraw(_userAddr, _amount);
             return _amount;
         }
-    }
-
-    /// @notice Collect the withdraw fee by team
-    /// @param _admin Team address
-    function collectWithdrawFee(address _admin) external onlyOwner {
-        TransferHelper.safeTransferMNT(_admin, totalWithdrawFee);
-        totalWithdrawFee = 0;
     }
 
     // @dev Transfer ETH to strategy
