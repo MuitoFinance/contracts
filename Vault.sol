@@ -9,7 +9,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../interface/IStrategy.sol";
 import "../comm/TransferHelper.sol";
 import "../interface/IVault.sol";
-import "hardhat/console.sol";
+
 /***
 * @notice - This is the vault contract for the mainChef
 **/
